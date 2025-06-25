@@ -2,33 +2,331 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mi Sitio Web</title>
+  <title>Mapa Hipotecario Realista</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-      background-color: #f4f4f4;
-      color: #333;
+      font-family: sans-serif;
+      padding: 2em;
     }
-    header {
-      background-color: #007acc;
-      color: white;
-      padding: 20px;
+    input, button {
+      margin: 0.5em 0;
+      padding: 0.5em;
+    }
+
+    .map-container {
+      position: relative;
+      display: flex;
+      margin-top: 2em;
+    }
+
+    .y-axis {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      margin-right: 4px;
+    }
+
+    .y-axis div {
+      height: 36px;
+      line-height: 36px;
+      text-align: right;
+      font-size: 11px;
+      padding-right: 5px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(11, 70px); /* 50% a 100% */
+      grid-auto-rows: 36px;
+      border: 1px solid #ccc;
+    }
+
+    .cell {
+      width: 70px;
+      height: 36px;
+      font-size: 11px;
       text-align: center;
-      border-radius: 10px;
+      line-height: 36px;
+      box-sizing: border-box;
     }
-    main {
-      margin-top: 20px;
+
+    .highlight {
+      border: 2px solid red;
+      font-weight: bold;
     }
+
+    .x-axis {
+      display: flex;
+	  text-align: center;
+      margin-left: 76px;
+      margin-top: 4px;
+    }
+
+    .x-axis div {
+      width: 70px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .best-total {
+      border: 2px solid gold;
+      background-color: yellow !important;
+    }
+
+    .similar-total {
+      border: 2px solid orange;
+      background-color: orange !important;
+    }
+	
+	.unviable {
+  background-color: purple !important;
+  color: white;
+}
+.unaffordable {
+  background-color: violet !important;
+  color: white;
+}
+
   </style>
 </head>
 <body>
-  <header>
-    <h1>Bienvenido a Mi Sitio Web</h1>
-  </header>
-  <main>
-    <p>Este es un sitio web básico alojado en GitHub Pages.</p>
-  </main>
+
+<h1>Simulador Visual de Hipoteca</h1>
+
+<label>Cantidad a hipotecar (€):</label>
+<input type="number" id="cantidad" min="1" step="1">
+
+<label>Interés anual (%):</label>
+<input type="number" id="interes" min="0" step="0.01">
+
+<label>Ahorros disponibles (€):</label>
+<input type="number" id="ahorros" min="0" step="1">
+
+<label>Sueldo anual (€):</label>
+<input type="number" id="sueldo" min="0" step="1">
+
+<label>Años de hipoteca (para el cálculo inverso):</label>
+<input type="number" id="plazo" min="1" max="40" value="30" step="1">
+
+
+<br>
+<button onclick="calculosInversos()">Realizar cálculos iniciales</button>
+<button onclick="generarMapa()">Generar matriz años/interés</button>
+<button onclick="calcularHipoteca()">Calcular tabla de amortización</button>
+
+<div id="calculosResultado" style="margin-top: 1em; background: #f4f4f4; padding: 1em; border: 1px solid #ccc;"></div>
+
+
+
+
+
+
+<div class="map-wrapper">
+  <div class="map-container">
+    <div class="y-axis" id="y-axis"></div>
+    <div id="grid" class="grid"></div>
+  </div>
+  <div class="x-axis" id="x-axis"></div>
+</div>
+
+
+  <div id="resultado"></div>
+
+<script>
+function generarMapa() {
+  const cantidad = parseFloat(document.getElementById('cantidad').value);
+  const interesAnual = parseFloat(document.getElementById('interes').value);
+  const ahorrosDisponibles = parseFloat(document.getElementById('ahorros').value);
+  const sueldo = parseFloat(document.getElementById('sueldo').value);
+
+  const grid = document.getElementById('grid');
+  const yAxis = document.getElementById('y-axis');
+  const xAxis = document.getElementById('x-axis');
+
+  if (isNaN(cantidad) || isNaN(interesAnual)) {
+    alert("Completa al menos cantidad e interés.");
+    return;
+  }
+
+  const porcentajes = Array.from({length: 11}, (_, i) => 50 + i * 5); // 50% a 100%
+  const años = Array.from({length: 16}, (_, i) => 15 + i); // 15 a 30 años
+
+  grid.innerHTML = "";
+  yAxis.innerHTML = "";
+  xAxis.innerHTML = "";
+
+  años.forEach(anio => {
+    yAxis.innerHTML += `<div>${anio} años</div>`;
+    const meses = anio * 12;
+
+    porcentajes.forEach(p => {
+      const capital = cantidad * (p / 100);
+      const ahorroPrevio = cantidad - capital;
+      const r = interesAnual / 12 / 100;
+
+      const cuota = (capital * r * Math.pow(1 + r, meses)) / (Math.pow(1 + r, meses) - 1);
+      const interesTotal = cuota * meses - capital;
+
+      const div = document.createElement('div');
+      div.className = 'cell';
+      div.style.backgroundColor = '#e4e4e4'; // color neutro base
+      div.innerHTML = `€${cuota.toFixed(2)}`;
+      div.title =
+`Porcentaje: ${p}%
+Años: ${anio}
+Cuota mensual: €${cuota.toFixed(2)}
+Interés total: €${interesTotal.toFixed(2)}
+Ahorro previo: €${ahorroPrevio.toFixed(2)}`;
+
+      // 🚫 REGLA: marcar en morado si no es viable
+      const superaAhorros = !isNaN(ahorrosDisponibles) && ahorroPrevio > ahorrosDisponibles;
+      const superaSueldo = !isNaN(sueldo) && cuota > ((sueldo / 12) * 0.30);
+
+      if (superaAhorros || superaSueldo) {
+        div.classList.add("unviable");
+      }
+
+      grid.appendChild(div);
+    });
+  });
+
+  porcentajes.forEach(p => {
+    xAxis.innerHTML += `<div>${p}%</div>`;
+  });
+}
+
+function cuotaMensual(capital, interesAnual, meses) {
+  const r = interesAnual / 12 / 100;
+  if (r === 0) return capital / meses;
+  return (capital * r * Math.pow(1 + r, meses)) / (Math.pow(1 + r, meses) - 1);
+}
+
+function calculosInversos() {
+  const cantidad = parseFloat(document.getElementById('cantidad').value);
+  const interes = parseFloat(document.getElementById('interes').value);
+  const ahorros = parseFloat(document.getElementById('ahorros').value);
+  const sueldo = parseFloat(document.getElementById('sueldo').value);
+  const plazo = parseInt(document.getElementById('plazo').value);
+  const meses = plazo * 12;
+  const resultado = document.getElementById('calculosResultado');
+  resultado.innerHTML = "";
+
+  if (isNaN(interes) || isNaN(plazo) || plazo <= 0) {
+    resultado.innerHTML = "<p style='color:red'>Introduce interés anual y plazo válido.</p>";
+    return;
+  }
+
+  const mensualMax = !isNaN(sueldo) ? (sueldo / 12) * 0.30 : Infinity;
+
+  // 1. Cantidad máxima a hipotecar
+  let maxHipoteca = 0;
+  for (let c = 1000; c <= 1_000_000; c += 500) {
+    const cuota = cuotaMensual(c, interes, meses);
+    const valorTotal = c * 0.8;
+    const ahorroNecesario = valorTotal - c;
+    if (cuota <= mensualMax && (!isNaN(ahorros) ? ahorroNecesario <= ahorros : true)) {
+      maxHipoteca = c;
+    } else {
+      break;
+    }
+  }
+
+  // 2. Ahorro mínimo necesario para hipotecar `cantidad` al 80%
+  let ahorroMinimoTexto = "No calculable";
+  if (!isNaN(cantidad) && cantidad > 0 && !isNaN(interes) && !isNaN(ahorros)) {
+    const ahorroNecesario = cantidad*0.2;
+    const cuota = cuotaMensual(cantidad, interes, meses);
+	if (ahorroNecesario > ahorros) {
+	const faltan = ahorroNecesario - ahorros;
+      ahorroMinimoTexto = `Te falta por ahorrar: ${faltan.toFixed(2)}€`;
+    } else {
+      ahorroMinimoTexto = "Ahorros suficientes para al menos el 80%.";
+    }
+  }
+
+  // 3. Sueldo anual necesario para cantidad + ahorro dado
+  let sueldoNecesarioTexto = "No calculable";
+  if (!isNaN(cantidad) && cantidad > 0 && !isNaN(interes) && !isNaN(sueldo)) {
+	const cuota = cuotaMensual(cantidad, interes, meses);
+    if (cuota <= mensualMax) {
+      const cuota = cuotaMensual(cantidad, interes, meses);
+      const sueldoNecesario = (cuota * 12) / 0.30;
+      sueldoNecesarioTexto = `Sueldo suficiente.`;
+    } else {
+	const sueldoMinimoNecesario = (cuota /0.3)*12;
+      sueldoNecesarioTexto = `Sueldo insuficiente para una letra al 80%. Necesitas al menos una nónima de ${sueldoMinimoNecesario.toFixed(2)}€ / año`;
+    }
+  }
+
+  resultado.innerHTML = `
+    <ul>
+      <li><strong>Cantidad máxima a hipotecar al 80% con tu sueldo:</strong> €${maxHipoteca.toFixed(2)}</li>
+      <li><strong>Ahorro mínimo necesario (para hipoteca 80% sobre €${cantidad || "?"}):</strong> ${ahorroMinimoTexto}</li>
+      <li><strong>Sueldo anual necesario para hipoteca de €${cantidad || "?"}:</strong> ${sueldoNecesarioTexto}</li>
+    </ul>
+  `;
+}
+
+  function calcularHipoteca() {
+  const cantidad = parseFloat(document.getElementById('cantidad').value);
+  const porcentaje = 80;
+  const meses = parseInt(document.getElementById('plazo').value)*12;
+  const interesAnual = parseFloat(document.getElementById('interes').value);
+  const resultadoDiv = document.getElementById('resultado');
+
+  if (isNaN(cantidad) || isNaN(porcentaje) || isNaN(meses) || isNaN(interesAnual)) {
+    resultadoDiv.innerHTML = '<p style="color:red">Por favor, complete todos los campos correctamente.</p>';
+    return;
+  }
+
+  const capital = cantidad * (porcentaje / 100);
+  const interesMensual = interesAnual / 12 / 100;
+
+  // Calcular cuota mensual fija
+  const cuota = capital * (interesMensual * Math.pow(1 + interesMensual, meses)) /
+                (Math.pow(1 + interesMensual, meses) - 1);
+
+  let saldo = capital;
+  let totalInteres = 0;
+  let totalPagado = 0;
+  const rows = [];
+
+  for (let mes = 1; mes <= meses; mes++) {
+    const interes = saldo * interesMensual;
+    const amortizacion = cuota - interes;
+    saldo -= amortizacion;
+    totalInteres += interes;
+    totalPagado += cuota;
+
+    rows.push(`
+      <tr>
+        <td>${mes}</td>
+        <td>${saldo > 0 ? saldo.toFixed(2) : "0.00"}</td>
+        <td>${totalPagado.toFixed(2)}</td>
+        <td>${totalInteres.toFixed(2)}</td>
+      </tr>
+    `);
+  }
+
+  resultadoDiv.innerHTML = `
+    <h2>Tabla de Amortización</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Mes</th>
+          <th>Saldo restante (€)</th>
+          <th>Total pagado (€)</th>
+          <th>Total intereses añadidos (€)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.join('')}
+      </tbody>
+    </table>
+    <p><strong>Interés total acumulado: €${totalInteres.toFixed(2)}</strong></p>
+  `;
+}
+
+
+</script>
 </body>
 </html>
